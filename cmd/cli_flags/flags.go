@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/citihub/probr/config"
-	"github.com/citihub/probr/utils"
+	"github.com/citihub/probr-sdk/config"
+	"github.com/citihub/probr-sdk/utils"
 )
 
 type flagHandlerFunc func(v interface{})

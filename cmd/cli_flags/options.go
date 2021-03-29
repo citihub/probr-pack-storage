@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/citihub/probr/config"
+	"github.com/citihub/probr-sdk/config"
 )
 
 // HandleRequestForRequiredVars will execute the logic for `./probr show-requirements (<PACK>)`

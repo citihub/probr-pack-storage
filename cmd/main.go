@@ -1,81 +1,44 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/briandowns/spinner"
-
-	"github.com/citihub/probr"
-	"github.com/citihub/probr/audit"
-	cliflags "github.com/citihub/probr/cmd/cli_flags"
-	"github.com/citihub/probr/config"
+	pack "github.com/citihub/probr-pack-storage"
+	cliflags "github.com/citihub/probr-pack-storage/cmd/cli_flags"
+	"github.com/citihub/probr-sdk/audit"
+	"github.com/citihub/probr-sdk/config"
+	"github.com/citihub/probr-sdk/logging"
+	"github.com/citihub/probr-sdk/plugin"
+	"github.com/citihub/probr-sdk/probeengine"
+	"github.com/citihub/probr-sdk/utils"
 )
 
+// ServicePack ...
+type ServicePack struct {
+}
+
+// RunProbes ...
+func (sp *ServicePack) RunProbes() error {
+	log.Printf("[DEBUG] message from ServicePack_Probr.RunProbes")
+	log.Printf("[DEBUG] args... %v", os.Args)
+
+	return ProbrCoreLogic()
+}
+
 func main() {
-
-	// Setup for handling SIGTERM (Ctrl+C)
-	setupCloseHandler()
-
-	err := config.Init("") // Create default config
-	if err != nil {
-		log.Printf("[ERROR] error returned from config.Init: %v", err)
-		exit(2)
+	if len(os.Args) > 1 && os.Args[1] == "debug" {
+		ProbrCoreLogic()
+		return
+	}
+	spProbr := &ServicePack{}
+	serveOpts := &plugin.ServeOpts{
+		Pack: spProbr,
 	}
 
-	if len(os.Args[1:]) > 0 {
-		log.Printf("[DEBUG] Checking for CLI options or flags")
-		cliflags.HandleRequestForRequiredVars()
-		cliflags.HandlePackOption()
-		// TODO: Find a way to get loglevel handling to work ABOVE this point,
-		// or to move the Options handlers below the flags handler
-		// Currently only ERROR will print prior to HandleFlags()
-		cliflags.HandleFlags()
-	}
-
-	config.Vars.LogConfigState()
-
-	if showIndicator() {
-		// At this loglevel, Probr is often silent for long periods. Add a visual runtime indicator.
-		config.Spinner = spinner.New(spinner.CharSets[42], 500*time.Millisecond)
-		config.Spinner.Start()
-	}
-
-	s, ts, err := probr.RunAllProbes()
-	if err != nil {
-		log.Printf("[ERROR] Error executing tests %v", err)
-		exit(2) // Exit 2+ is for logic/functional errors
-	}
-	log.Printf("[INFO] Overall test completion status: %v", s)
-	audit.State.SetProbrStatus()
-
-	out := probr.GetAllProbeResults(ts)
-	if out == nil || len(out) == 0 {
-		audit.State.Meta["no probes completed"] = fmt.Sprintf(
-			"Probe results not written to file, possibly due to all being excluded or permissions on the specified output directory: %s",
-			config.Vars.CucumberDir(),
-		)
-	}
-	audit.State.PrintSummary()
-	audit.State.WriteSummary()
-
-	exit(s)
-}
-
-// --silent disables, and otherwise only shows on ERROR/WARN
-func showIndicator() bool {
-	return (config.Vars.LogLevel == "ERROR" || config.Vars.LogLevel == "WARN") && !config.Vars.Silent
-}
-
-func exit(status int) {
-	if showIndicator() {
-		config.Spinner.Stop()
-	}
-	os.Exit(status)
+	plugin.Serve(serveOpts)
 }
 
 // setupCloseHandler creates a 'listener' on a new goroutine which will notify the
@@ -88,8 +51,53 @@ func setupCloseHandler() {
 	go func() {
 		<-c
 		log.Printf("Execution aborted - %v", "SIGTERM")
-		probr.CleanupTmp()
+		probeengine.CleanupTmp()
 		// TODO: Additional cleanup may be needed. For instance, any pods created during tests are not being dropped if aborted.
 		os.Exit(0)
 	}()
+}
+
+// ProbrCoreLogic ...
+func ProbrCoreLogic() (err error) {
+	log.Printf("[INFO] message from ProbCoreLogic: %s", "Start")
+
+	// Setup for handling SIGTERM (Ctrl+C)
+	//setupCloseHandler()
+
+	err = config.Init("") // Create default config
+	if err != nil {
+		log.Printf("[ERROR] error returned from config.Init: %v", err)
+		return
+	}
+	if len(os.Args[1:]) > 0 {
+		log.Printf("[DEBUG] Checking for CLI options or flags")
+		cliflags.HandleRequestForRequiredVars()
+		log.Printf("[DEBUG] Handle pack option")
+		cliflags.HandlePackOption()
+		cliflags.HandleFlags()
+	}
+
+	config.Vars.LogConfigState()
+
+	logWriter := logging.ProbrLoggerOutput()
+	log.SetOutput(logWriter) // TODO: This is a temporary patch, since logger output is being overritten while loading config vars
+
+	s, ts, err := probeengine.RunAllProbes("storage", pack.GetProbes())
+	if err != nil {
+		log.Printf("[ERROR] Error executing tests %v", err)
+		return
+	}
+	log.Printf("[INFO] Overall test completion status: %v", s)
+	audit.State.SetProbrStatus()
+
+	_, success := probeengine.GetAllProbeResults(ts) // TODO: Use the results provided here
+	audit.State.PrintSummary()
+	audit.State.WriteSummary()
+
+	log.Printf("[INFO] message from ProbCoreLogic: %s", "End")
+
+	if !success {
+		return utils.ReformatError("One or more probe scenarios were not successful. View the output logs for more details.")
+	}
+	return
 }

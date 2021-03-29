@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/citihub/probr/config"
+	"github.com/citihub/probr-sdk/config"
 )
 
 func TestHandleFlags(t *testing.T) {
