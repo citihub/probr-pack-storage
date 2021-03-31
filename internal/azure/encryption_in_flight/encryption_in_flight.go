@@ -324,7 +324,7 @@ func (p ProbeStruct) Name() string {
 
 // Path will return this probe's feature path
 func (p ProbeStruct) Path() string {
-	return probeengine.GetFeaturePath("service_packs", "storage", "azure", p.Name())
+	return probeengine.GetFeaturePath("internal", "azure", p.Name())
 }
 
 // ProbeInitialize handles any overall Test Suite initialisation steps.  This is registered with the
