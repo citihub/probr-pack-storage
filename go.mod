@@ -11,11 +11,9 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
 	github.com/citihub/probr-sdk v0.0.13
 	github.com/cucumber/godog v0.11.0
-	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/markbates/pkger v0.17.1
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
 	golang.org/x/text v0.3.3 // indirect
-	google.golang.org/protobuf v1.24.0 // indirect
 )
 
 // replace github.com/citihub/probr-sdk => ../probr-sdk
