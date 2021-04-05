@@ -376,7 +376,6 @@ func (probe probeStruct) Path() string {
 
 // ProbeInitialize handles any overall Test Suite initialisation steps.  This is registered with the
 // test handler as part of the init() function.
-//func (p ProbeStruct) ProbeInitialize(ctx *godog.Suite) {
 func (probe probeStruct) ProbeInitialize(ctx *godog.TestSuiteContext) {
 
 	ctx.BeforeSuite(func() {

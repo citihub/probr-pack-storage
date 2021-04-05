@@ -12,6 +12,8 @@ require (
 	github.com/citihub/probr-sdk v0.0.16
 	github.com/cucumber/godog v0.11.0
 	github.com/markbates/pkger v0.17.1
+	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
+	golang.org/x/text v0.3.3 // indirect
 )
 
 // replace github.com/citihub/probr-sdk => ../probr-sdk

@@ -6,8 +6,11 @@ import (
 	"log"
 	"strings"
 
+	azureutil "github.com/citihub/probr-pack-storage/internal/azure"
+	"github.com/citihub/probr-pack-storage/internal/connection"
 	"github.com/citihub/probr-sdk/audit"
 	"github.com/citihub/probr-sdk/probeengine"
+	"github.com/citihub/probr-sdk/utils"
 	"github.com/cucumber/godog"
 )
 
@@ -21,259 +24,177 @@ type scenarioState struct {
 	httpOption                bool
 	httpsOption               bool
 	policyAssignmentMgmtGroup string
+	storageAccounts           []string
 }
 
 // ProbeStruct meets the interface allowing this probe to be added to the ProbeStore
-type ProbeStruct struct {
-	state scenarioState
+type probeStruct struct {
 }
 
 // Probe meets the interface allowing this probe to be added to the ProbeStore
-var Probe ProbeStruct
+var Probe probeStruct
+var scenario scenarioState        // Local container of scenario state
+var azConnection connection.Azure // Provides functionality to interact with Azure
 
-func (state *scenarioState) securityControlsThatRestrictDataFromBeingUnencryptedAtRest() error {
+func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
+
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
+	defer func() {
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
+	}()
+	stepTrace.WriteString(fmt.Sprintf("Validate that Azure subscription specified in config file is available; "))
+
+	payload = struct {
+		SubscriptionID string
+		TenantID       string
+	}{
+		azureutil.SubscriptionID(),
+		azureutil.TenantID(),
+	}
+
+	err = azConnection.IsCloudAvailable() // Must be assigned to 'err' be audited
+	return err
+}
+
+func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error {
 
 	var err error
 	var stepTrace strings.Builder
 	payload := struct {
-	}{}
+		SubscriptionID string
+		ResourceGroup  string
+	}{
+		SubscriptionID: azureutil.SubscriptionID(),
+		ResourceGroup:  azureutil.ResourceGroup(),
+	}
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
 
-	// It is available
+	stepTrace.WriteString("Check if value for Azure resource group is set in config vars; ")
+	if azureutil.ResourceGroup() == "" {
+		err = utils.ReformatError("Azure resource group config var not set")
+		return err
+	}
 
-	log.Printf("[DEBUG] Azure Storage account is encrypted by default and cannot be turned off. No test to run. Checking Azure Policy. (Unless customise this test to check for specific key usage.")
-	return nil //TODO: Remove this line and return actual err. This is temporary to ensure test doesn't halt and other steps are not skipped
+	stepTrace.WriteString("Check the resource group exists in the specified azure subscription; ")
+	_, getGrpErr := azConnection.GetResourceGroupByName(azureutil.ResourceGroup())
+	if getGrpErr != nil {
+		err = utils.ReformatError("Azure resource group '%s' does not exists. Error: %v", azureutil.ResourceGroup(), getGrpErr)
+		return err
+	}
+
+	return nil
 }
 
-// PENDING IMPLEMENTATION
-func (state *scenarioState) weProvisionAnObjectStorageBucket() error {
+func (scenario *scenarioState) creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY(encryptionOption string, expectedResult string) error {
 
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
+	// Supported values for 'encryptionOption':
+	//	'enabled'
+	//  'disabled'
+
+	// Supported values for 'expectedResult':
+	//	'succeed'
+	//	'fail'
+
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
 
-	return nil
+	// TODO: How to set encryption at rest? Is this set by default? How to verify?
+	// Ref: https://docs.microsoft.com/en-us/azure/storage/common/storage-service-encryption
+	// As per MSFT: "Azure Storage encryption is enabled for all storage accounts... Azure Storage encryption cannot be disabled."
+
+	err = godog.ErrPending
+	return err
 }
 
-// PENDING IMPLEMENTATION
-func (state *scenarioState) encryptionAtRestIs(encryptionOption string) error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) creationWillWithAnErrorMatching(result string) error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) createContainerWithoutEncryption() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) detectiveDetectsNonCompliant() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) containerIsRemediated() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) setup() {
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) teardown() {
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) policyOrRuleAvailable() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	// It is available
-	log.Printf("[DEBUG] Azure Storage account is encrypted by default and cannot be turned off. No test to run. Checking Azure Policy. (Unless customise this test to check for specific key usage.")
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) checkPolicyOrRuleAssignment() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) policyOrRuleAssigned() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) prepareToCreateContainer() error {
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) createContainerWithEncryptionOption(encryptionOption string) error {
-	return nil
-}
-
-// PENDING IMPLEMENTATION
-func (state *scenarioState) createResult(result string) error {
-	return nil
-}
-
-func (state *scenarioState) beforeScenario(probeName string, gs *godog.Scenario) {
-	state.name = gs.Name
-	state.probe = audit.State.GetProbeLog(probeName)
-	state.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
+func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
+	s.name = gs.Name
+	s.probe = audit.State.GetProbeLog(probeName)
+	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
+	s.ctx = context.Background()
+	s.storageAccounts = make([]string, 0)
 	probeengine.LogScenarioStart(gs)
 }
 
 // Name returns this probe's name
-func (p ProbeStruct) Name() string {
+func (probe probeStruct) Name() string {
 	return "encryption_at_rest"
 }
 
 // Path returns the probe's feature file path
-func (p ProbeStruct) Path() string {
-	return probeengine.GetFeaturePath("internal", "azure", p.Name())
+func (probe probeStruct) Path() string {
+	return probeengine.GetFeaturePath("internal", "azure", probe.Name())
 }
 
 // ProbeInitialize handles any overall Test Suite initialisation steps.  This is registered with the
 // test handler as part of the init() function.
-//func (p ProbeStruct) ProbeInitialize(ctx *godog.Suite) {
-func (p ProbeStruct) ProbeInitialize(ctx *godog.TestSuiteContext) {
-	p.state = scenarioState{}
+func (probe probeStruct) ProbeInitialize(ctx *godog.TestSuiteContext) {
 
-	ctx.BeforeSuite(p.state.setup)
+	ctx.BeforeSuite(func() {
 
-	ctx.AfterSuite(p.state.teardown)
+		// Initialize azure connection
+		azConnection = connection.NewAzureConnection(
+			context.Background(),
+			azureutil.SubscriptionID(),
+			azureutil.TenantID(),
+			azureutil.ClientID(),
+			azureutil.ClientSecret(),
+		)
+	})
+
+	ctx.AfterSuite(func() {
+	})
 }
 
 // ScenarioInitialize initialises the scenario
-func (p ProbeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
+func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 
 	ctx.BeforeScenario(func(s *godog.Scenario) {
-		p.state.beforeScenario(p.Name(), s)
+		beforeScenario(&scenario, probe.Name(), s)
 	})
 
-	ctx.Step(`^security controls that restrict data from being unencrypted at rest$`, p.state.securityControlsThatRestrictDataFromBeingUnencryptedAtRest)
-	ctx.Step(`^we provision an Object Storage bucket$`, p.state.weProvisionAnObjectStorageBucket)
-	ctx.Step(`^encryption at rest is "([^"]*)"$`, p.state.encryptionAtRestIs)
-	ctx.Step(`^creation will "([^"]*)" with an error matching "([^"]*)"$`, p.state.creationWillWithAnErrorMatching)
+	// Background
+	ctx.Step(`^an Azure subscription is available$`, scenario.anAzureSubscriptionIsAvailable)
+	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
-	ctx.Step(`^there is a detective capability for creation of Object Storage without encryption at rest$`, p.state.policyOrRuleAvailable)
-	ctx.Step(`^the capability for detecting the creation of Object Storage without encryption at rest is active$`, p.state.checkPolicyOrRuleAssignment)
-	ctx.Step(`^the detective measure is enabled$`, p.state.policyOrRuleAssigned)
-	ctx.Step(`^Object Storage is created with without encryption at rest$`, p.state.createContainerWithoutEncryption)
-	ctx.Step(`^the detective capability detects the creation of Object Storage without encryption at rest$`, p.state.detectiveDetectsNonCompliant)
-	ctx.Step(`^the detective capability enforces encryption at rest on the Object Storage Bucket$`, p.state.containerIsRemediated)
+	// Steps
+	ctx.Step(`^creation of an Object Storage bucket with encryption at rest "([^"]*)" should "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
-		probeengine.LogScenarioEnd(s)
+		afterScenario(scenario, probe, s, err)
 	})
 
 	ctx.BeforeStep(func(st *godog.Step) {
-		p.state.currentStep = st.Text
+		scenario.currentStep = st.Text
 	})
 
 	ctx.AfterStep(func(st *godog.Step, err error) {
-		p.state.currentStep = ""
+		scenario.currentStep = ""
 	})
+}
+
+func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario, err error) {
+
+	teardown()
+
+	probeengine.LogScenarioEnd(gs)
+}
+
+func teardown() {
+
+	for _, account := range scenario.storageAccounts {
+		log.Printf("[DEBUG] need to delete the storageAccount: %s", account)
+		err := connection.DeleteAccount(scenario.ctx, azureutil.ResourceGroup(), account)
+
+		if err != nil {
+			log.Printf("[ERROR] error deleting the storageAccount: %v", err)
+		}
+	}
+
+	log.Println("[DEBUG] Teardown completed")
 }

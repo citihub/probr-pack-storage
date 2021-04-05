@@ -7,22 +7,35 @@ Feature: Object Storage Encryption at Rest
 
     #Rule: CHC2-AGP140 - Ensure cryptographic controls are in place to protect the confidentiality and integrity of data in-transit, stored, generated and processed in the cloud
 
+    Background:
+      Given an Azure subscription is available
+      And azure resource group specified in config exists
+
     @s-azear-001
     Scenario Outline: Prevent Creation of Object Storage Without Encryption at Rest
-      Given security controls that restrict data from being unencrypted at rest
-      When we provision an Object Storage bucket
-      And encryption at rest is "<Encryption Option>"
-      Then creation will "<Result>" with an error matching "<Error Description>"
-
+      Then creation of an Object Storage bucket with encryption at rest "<Encryption Option>" should "<Result>"
+      
       Examples:
-        | Encryption Option | Result  | Error Description                                                      |
-        | enabled           | Fail    | Storage Buckets must not be created without encryption as rest enabled |
-        | disabled          | Succeed |                                                                        |
+        | Encryption Option | Result  |
+        | enabled           | fail    |
+        | disabled          | succeed |
 
-    @s-azear-002
-    Scenario: Detect creation of Object Storage Without Encryption at Rest
-      Given there is a detective capability for creation of Object Storage without encryption at rest
-      And the capability for detecting the creation of Object Storage without encryption at rest is active
-      When Object Storage is created with without encryption at rest
-      Then the detective capability detects the creation of Object Storage without encryption at rest
-      And the detective capability enforces encryption at rest on the Object Storage Bucket
+    # @s-azear-001
+    # Scenario Outline: Prevent Creation of Object Storage Without Encryption at Rest
+    #   Given security controls that restrict data from being unencrypted at rest
+    #   When we provision an Object Storage bucket
+    #   And encryption at rest is "<Encryption Option>"
+    #   Then creation will "<Result>" with an error matching "<Error Description>"
+
+    #   Examples:
+    #     | Encryption Option | Result  | Error Description                                                      |
+    #     | enabled           | Fail    | Storage Buckets must not be created without encryption as rest enabled |
+    #     | disabled          | Succeed |                                                                        |
+
+    # @s-azear-002
+    # Scenario: Detect creation of Object Storage Without Encryption at Rest
+    #   Given there is a detective capability for creation of Object Storage without encryption at rest
+    #   And the capability for detecting the creation of Object Storage without encryption at rest is active
+    #   When Object Storage is created with without encryption at rest
+    #   Then the detective capability detects the creation of Object Storage without encryption at rest
+    #   And the detective capability enforces encryption at rest on the Object Storage Bucket
