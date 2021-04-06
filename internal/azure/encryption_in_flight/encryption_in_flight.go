@@ -2,7 +2,6 @@ package azureeif
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"github.com/cucumber/godog"
 
 	azureutil "github.com/citihub/probr-pack-storage/internal/azure"
-	"github.com/citihub/probr-pack-storage/internal/azure/group"
 	"github.com/citihub/probr-pack-storage/internal/connection"
 	"github.com/citihub/probr-sdk/audit"
 	"github.com/citihub/probr-sdk/probeengine"
@@ -34,119 +32,155 @@ type scenarioState struct {
 }
 
 // ProbeStruct allows this probe to be added to the ProbeStore
-type ProbeStruct struct {
-	state scenarioState
+type probeStruct struct {
 }
 
 // Probe allows this probe to be added to the ProbeStore
-var Probe ProbeStruct
+var Probe probeStruct
+var scenario scenarioState        // Local container of scenario state
+var azConnection connection.Azure // Provides functionality to interact with Azure
 
-func (state *scenarioState) setup() {
+func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
 
-	log.Println("[DEBUG] Setting up \"scenarioState\"")
-
-}
-
-func (state *scenarioState) teardown() {
-	for _, account := range state.storageAccounts {
-		log.Printf("[DEBUG] need to delete the storageAccount: %s", account)
-		err := connection.DeleteAccount(state.ctx, azureutil.ResourceGroup(), account)
-
-		if err != nil {
-			log.Printf("[ERROR] error deleting the storageAccount: %v", err)
-		}
-	}
-
-	log.Println("[DEBUG] Teardown completed")
-}
-
-func (state *scenarioState) anAzureResourceGroupExists() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-		AzureSubscriptionID string
-		AzureResourceGroup  string
-	}{
-		AzureSubscriptionID: azureutil.SubscriptionID(),
-		AzureResourceGroup:  azureutil.ResourceGroup(),
-	}
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
+	stepTrace.WriteString(fmt.Sprintf("Validate that Azure subscription specified in config file is available; "))
 
-	stepTrace.WriteString("Check if value for Azure resource group is set in config vars;")
-	if azureutil.ResourceGroup() == "" {
-		log.Printf("[ERROR] Azure resource group config var not set")
-		err = errors.New("Azure resource group config var not set")
+	payload = struct {
+		SubscriptionID string
+		TenantID       string
+	}{
+		azureutil.SubscriptionID(),
+		azureutil.TenantID(),
 	}
-	if err == nil {
-		stepTrace.WriteString("Check the resource group exists in the specified azure subscription;")
-		_, err = group.Get(state.ctx, azureutil.ResourceGroup())
-		if err != nil {
-			log.Printf("[ERROR] Configured Azure resource group %s does not exists", azureutil.ResourceGroup())
-		}
-	}
+
+	err = azConnection.IsCloudAvailable() // Must be assigned to 'err' be audited
 	return err
 }
 
-func (state *scenarioState) weProvisionAnObjectStorageBucket() error {
+func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error {
 
 	var err error
 	var stepTrace strings.Builder
 	payload := struct {
-	}{}
+		SubscriptionID string
+		ResourceGroup  string
+	}{
+		SubscriptionID: azureutil.SubscriptionID(),
+		ResourceGroup:  azureutil.ResourceGroup(),
+	}
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
 
-	// Nothing to do here
+	stepTrace.WriteString("Check if value for Azure resource group is set in config vars; ")
+	if azureutil.ResourceGroup() == "" {
+		err = utils.ReformatError("Azure resource group config var not set")
+		return err
+	}
+
+	stepTrace.WriteString("Check the resource group exists in the specified azure subscription; ")
+	_, getGrpErr := azConnection.GetResourceGroupByName(azureutil.ResourceGroup())
+	if getGrpErr != nil {
+		err = utils.ReformatError("Azure resource group '%s' does not exists. Error: %v", azureutil.ResourceGroup(), getGrpErr)
+		return err
+	}
+
 	return nil
 }
 
-func (state *scenarioState) httpAccessIs(arg1 string) error {
+func (scenario *scenarioState) httpAccessIs(arg1 string) error {
 
 	var err error
 	var stepTrace strings.Builder
 	payload := struct {
 	}{}
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
 	stepTrace.WriteString(fmt.Sprintf(
 		"Http Option: %s;", arg1))
 	if arg1 == "enabled" {
-		state.httpOption = true
+		scenario.httpOption = true
 	} else {
-		state.httpOption = false
+		scenario.httpOption = false
 	}
 	return nil
 }
 
-func (state *scenarioState) httpsAccessIs(arg1 string) error {
+func (scenario *scenarioState) httpsAccessIs(arg1 string) error {
 
 	var err error
 	var stepTrace strings.Builder
 	payload := struct {
 	}{}
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
 	stepTrace.WriteString(fmt.Sprintf(
 		"Https Option: %s;", arg1))
 	if arg1 == "enabled" {
-		state.httpsOption = true
+		scenario.httpsOption = true
 	} else {
-		state.httpsOption = false
+		scenario.httpsOption = false
 	}
 	return nil
 }
 
-func (state *scenarioState) creationWillWithAnErrorMatching(expectation, errDescription string) error {
+func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldY(httpsOption, expectedResult string) error {
+
+	// Supported values for 'httpsOption':
+	//	'enabled'
+	//  'disabled'
+
+	// Supported values for 'expectedResult':
+	//	'succeed'
+	//	'fail'
+
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
+	defer func() {
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
+	}()
+
+	// Validate input values
+
+	var httpsEnabled bool
+	switch httpsOption {
+	case "enabled":
+		httpsEnabled = true
+	case "disabled":
+		httpsEnabled = false
+	default:
+		err = utils.ReformatError("Unexpected value provided for httpsOption: '%s' Expected values: ['enabled', 'disabled']", httpsOption)
+		return err
+	}
+	log.Print(httpsEnabled) //TODO:Remove
+
+	var shouldCreate bool
+	switch expectedResult {
+	case "succeed":
+		shouldCreate = true
+	case "fail":
+		shouldCreate = false
+	default:
+		err = utils.ReformatError("Unexpected value provided for expectedResult: '%s' Expected values: ['succeeds', 'fails']", expectedResult)
+		return err
+	}
+	log.Print(shouldCreate) //TODO:Remove
+
+	// TODO: Validate input for whitelistEntry using some regex
+
+	err = godog.ErrPending
+	return err
+}
+
+func (scenario *scenarioState) creationWillWithAnErrorMatching(expectation, errDescription string) error {
 
 	var err error
 	var stepTrace strings.Builder
@@ -157,7 +191,7 @@ func (state *scenarioState) creationWillWithAnErrorMatching(expectation, errDesc
 		HTTPSOption    bool
 	}{}
 	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
 	stepTrace.WriteString("Generating random value for account name;")
@@ -169,35 +203,35 @@ func (state *scenarioState) creationWillWithAnErrorMatching(expectation, errDesc
 		IPRules:       &[]azureStorage.IPRule{},
 	}
 	payload.NetworkRuleSet = networkRuleSet
-	payload.HTTPOption = state.httpOption
-	payload.HTTPSOption = state.httpsOption
+	payload.HTTPOption = scenario.httpOption
+	payload.HTTPSOption = scenario.httpsOption
 
 	// Both true take it as http option is try
-	if state.httpsOption && state.httpOption {
+	if scenario.httpsOption && scenario.httpOption {
 		stepTrace.WriteString(fmt.Sprintf(
 			"Creating Storage Account with HTTPS: %v;", false))
 		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v;", false)
-		_, err = connection.CreateWithNetworkRuleSet(state.ctx, accountName,
-			azureutil.ResourceGroup(), state.tags, false, &networkRuleSet)
-	} else if state.httpsOption {
+		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
+			azureutil.ResourceGroup(), scenario.tags, false, &networkRuleSet)
+	} else if scenario.httpsOption {
 		stepTrace.WriteString(fmt.Sprintf(
-			"Creating Storage Account with HTTPS: %v;", state.httpsOption))
-		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", state.httpsOption)
-		_, err = connection.CreateWithNetworkRuleSet(state.ctx, accountName,
-			azureutil.ResourceGroup(), state.tags, state.httpsOption, &networkRuleSet)
-	} else if state.httpOption {
+			"Creating Storage Account with HTTPS: %v;", scenario.httpsOption))
+		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", scenario.httpsOption)
+		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
+			azureutil.ResourceGroup(), scenario.tags, scenario.httpsOption, &networkRuleSet)
+	} else if scenario.httpOption {
 		stepTrace.WriteString(fmt.Sprintf(
-			"Creating Storage Account with HTTPS: %v;", state.httpsOption))
-		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", state.httpsOption)
-		_, err = connection.CreateWithNetworkRuleSet(state.ctx, accountName,
-			azureutil.ResourceGroup(), state.tags, state.httpsOption, &networkRuleSet)
+			"Creating Storage Account with HTTPS: %v;", scenario.httpsOption))
+		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", scenario.httpsOption)
+		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
+			azureutil.ResourceGroup(), scenario.tags, scenario.httpsOption, &networkRuleSet)
 	}
 	if err == nil {
 		// storage account created so add to state
 		stepTrace.WriteString(fmt.Sprintf(
 			"Created Storage Account: %s;", accountName))
 		log.Printf("[DEBUG] Created Storage Account: %s", accountName)
-		state.storageAccounts = append(state.storageAccounts, accountName)
+		scenario.storageAccounts = append(scenario.storageAccounts, accountName)
 	}
 
 	if expectation == "Fail" {
@@ -234,137 +268,89 @@ func (state *scenarioState) creationWillWithAnErrorMatching(expectation, errDesc
 	return err
 }
 
-func (state *scenarioState) detectObjectStorageUnencryptedTransferAvailable() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-func (state *scenarioState) detectObjectStorageUnencryptedTransferEnabled() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-func (state *scenarioState) createUnencryptedTransferObjectStorage() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-func (state *scenarioState) detectsTheObjectStorage() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-func (state *scenarioState) encryptedDataTrafficIsEnforced() error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		state.audit.AuditScenarioStep(state.currentStep, stepTrace.String(), payload, err)
-	}()
-	err = fmt.Errorf("Not Implemented")
-	stepTrace.WriteString("TODO: Pending implementation;")
-
-	return nil
-}
-
-func (state *scenarioState) beforeScenario(probeName string, gs *godog.Scenario) {
-	state.name = gs.Name
-	state.probe = audit.State.GetProbeLog(probeName)
-	state.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
-	state.ctx = context.Background()
+func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
+	s.name = gs.Name
+	s.probe = audit.State.GetProbeLog(probeName)
+	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
+	s.ctx = context.Background()
+	s.storageAccounts = make([]string, 0)
 	probeengine.LogScenarioStart(gs)
 }
 
 // Name will return this probe's name
-func (p ProbeStruct) Name() string {
+func (probe probeStruct) Name() string {
 	return "encryption_in_flight"
 }
 
 // Path will return this probe's feature path
-func (p ProbeStruct) Path() string {
-	return probeengine.GetFeaturePath("internal", "azure", p.Name())
+func (probe probeStruct) Path() string {
+	return probeengine.GetFeaturePath("internal", "azure", probe.Name())
 }
 
 // ProbeInitialize handles any overall Test Suite initialisation steps.  This is registered with the
 // test handler as part of the init() function.
-//func (p ProbeStruct) ProbeInitialize(ctx *godog.Suite) {
-func (p ProbeStruct) ProbeInitialize(ctx *godog.TestSuiteContext) {
+func (probe probeStruct) ProbeInitialize(ctx *godog.TestSuiteContext) {
 
-	ctx.BeforeSuite(p.state.setup)
+	ctx.BeforeSuite(func() {
 
-	ctx.AfterSuite(p.state.teardown)
+		// Initialize azure connection
+		azConnection = connection.NewAzureConnection(
+			context.Background(),
+			azureutil.SubscriptionID(),
+			azureutil.TenantID(),
+			azureutil.ClientID(),
+			azureutil.ClientSecret(),
+		)
+	})
+
+	ctx.AfterSuite(func() {
+	})
 }
 
 // ScenarioInitialize initialises the scenario
-func (p ProbeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
+func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 
 	ctx.BeforeScenario(func(s *godog.Scenario) {
-		p.state.beforeScenario(p.Name(), s)
+		beforeScenario(&scenario, probe.Name(), s)
 	})
 
-	ctx.Step(`^a specified azure resource group exists$`, p.state.anAzureResourceGroupExists)
-	ctx.Step(`^we provision an Object Storage bucket$`, p.state.weProvisionAnObjectStorageBucket)
-	ctx.Step(`^http access is "([^"]*)"$`, p.state.httpAccessIs)
-	ctx.Step(`^https access is "([^"]*)"$`, p.state.httpsAccessIs)
-	ctx.Step(`^creation will "([^"]*)" with an error matching "([^"]*)"$`, p.state.creationWillWithAnErrorMatching)
+	// Background
+	ctx.Step(`^an Azure subscription is available$`, scenario.anAzureSubscriptionIsAvailable)
+	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
-	ctx.Step(`^there is a detective capability for creation of Object Storage with unencrypted data transfer enabled$`, p.state.detectObjectStorageUnencryptedTransferAvailable)
-	ctx.Step(`^the capability for detecting the creation of Object Storage with unencrypted data transfer enabled is active$`, p.state.detectObjectStorageUnencryptedTransferEnabled)
-	ctx.Step(`^Object Storage is created with unencrypted data transfer enabled$`, p.state.createUnencryptedTransferObjectStorage)
-	ctx.Step(`^the detective capability detects the creation of Object Storage with unencrypted data transfer enabled$`, p.state.detectsTheObjectStorage)
-	ctx.Step(`^the detective capability enforces encrypted data transfer on the Object Storage Bucket$`, p.state.encryptedDataTrafficIsEnforced)
+	// Steps
+	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" should "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXShouldY)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
-		probeengine.LogScenarioEnd(s)
+		afterScenario(scenario, probe, s, err)
 	})
 
 	ctx.BeforeStep(func(st *godog.Step) {
-		p.state.currentStep = st.Text
+		scenario.currentStep = st.Text
 	})
 
 	ctx.AfterStep(func(st *godog.Step, err error) {
-		p.state.currentStep = ""
+		scenario.currentStep = ""
 	})
+}
+
+func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario, err error) {
+
+	teardown()
+
+	probeengine.LogScenarioEnd(gs)
+}
+
+func teardown() {
+
+	for _, account := range scenario.storageAccounts {
+		log.Printf("[DEBUG] need to delete the storageAccount: %s", account)
+		err := connection.DeleteAccount(scenario.ctx, azureutil.ResourceGroup(), account)
+
+		if err != nil {
+			log.Printf("[ERROR] error deleting the storageAccount: %v", err)
+		}
+	}
+
+	log.Println("[DEBUG] Teardown completed")
 }
