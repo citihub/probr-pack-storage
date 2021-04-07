@@ -11,6 +11,7 @@ import (
 	cliflags "github.com/citihub/probr-sdk/cli_flags"
 	"github.com/citihub/probr-sdk/config"
 	"github.com/citihub/probr-sdk/logging"
+	"github.com/citihub/probr-sdk/plugin"
 	"github.com/citihub/probr-sdk/probeengine"
 	"github.com/citihub/probr-sdk/utils"
 )
@@ -28,18 +29,16 @@ func (sp *ServicePack) RunProbes() error {
 }
 
 func main() {
-	ProbrCoreLogic()
+	if len(os.Args) > 1 && os.Args[1] == "debug" {
+		ProbrCoreLogic()
+		return
+	}
+	spProbr := &ServicePack{}
+	serveOpts := &plugin.ServeOpts{
+		Pack: spProbr,
+	}
 
-	// if len(os.Args) > 1 && os.Args[1] == "debug" {
-	// 	ProbrCoreLogic()
-	// 	return
-	// }
-	// spProbr := &ServicePack{}
-	// serveOpts := &plugin.ServeOpts{
-	// 	Pack: spProbr,
-	// }
-
-	// plugin.Serve(serveOpts)
+	plugin.Serve(serveOpts)
 }
 
 // setupCloseHandler creates a 'listener' on a new goroutine which will notify the
