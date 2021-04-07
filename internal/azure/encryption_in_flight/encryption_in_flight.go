@@ -132,7 +132,7 @@ func (scenario *scenarioState) httpsAccessIs(arg1 string) error {
 	return nil
 }
 
-func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldY(httpsOption, expectedResult string) error {
+func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldYWithErrorCodeZ(httpsOption, expectedResult, expectedErrorCode string) error {
 
 	// Supported values for 'httpsOption':
 	//	'enabled'
@@ -142,14 +142,16 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldY(
 	//	'succeed'
 	//	'fail'
 
+	// Supported values for 'expectedErrorCode':
+	//	free text
+
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	// Validate input values
-
+	// Validate input values - httpsOption
 	var httpsEnabled bool
 	switch httpsOption {
 	case "enabled":
@@ -160,8 +162,8 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldY(
 		err = utils.ReformatError("Unexpected value provided for httpsOption: '%s' Expected values: ['enabled', 'disabled']", httpsOption)
 		return err
 	}
-	log.Print(httpsEnabled) //TODO:Remove
 
+	// Validate input values - expectedResult
 	var shouldCreate bool
 	switch expectedResult {
 	case "succeed":
@@ -172,99 +174,72 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldY(
 		err = utils.ReformatError("Unexpected value provided for expectedResult: '%s' Expected values: ['succeeds', 'fails']", expectedResult)
 		return err
 	}
-	log.Print(shouldCreate) //TODO:Remove
 
-	// TODO: Validate input for whitelistEntry using some regex
+	resourceGroup := azureutil.ResourceGroup()
+	bucketName := utils.RandomString(10)
+	stepTrace.WriteString(fmt.Sprintf("Generate a storage account name using a random string: '%s'; ", bucketName))
 
-	err = godog.ErrPending
-	return err
-}
-
-func (scenario *scenarioState) creationWillWithAnErrorMatching(expectation, errDescription string) error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-		AccountName    string
-		NetworkRuleSet azureStorage.NetworkRuleSet
-		HTTPOption     bool
-		HTTPSOption    bool
-	}{}
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	stepTrace.WriteString("Generating random value for account name;")
-	accountName := utils.RandomString(5) + "storageac"
-	payload.AccountName = accountName
-
+	stepTrace.WriteString("Use DefaultActionAllow for NetworkRuleSet; ")
 	networkRuleSet := azureStorage.NetworkRuleSet{
-		DefaultAction: azureStorage.DefaultActionDeny,
-		IPRules:       &[]azureStorage.IPRule{},
-	}
-	payload.NetworkRuleSet = networkRuleSet
-	payload.HTTPOption = scenario.httpOption
-	payload.HTTPSOption = scenario.httpsOption
-
-	// Both true take it as http option is try
-	if scenario.httpsOption && scenario.httpOption {
-		stepTrace.WriteString(fmt.Sprintf(
-			"Creating Storage Account with HTTPS: %v;", false))
-		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v;", false)
-		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
-			azureutil.ResourceGroup(), scenario.tags, false, &networkRuleSet)
-	} else if scenario.httpsOption {
-		stepTrace.WriteString(fmt.Sprintf(
-			"Creating Storage Account with HTTPS: %v;", scenario.httpsOption))
-		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", scenario.httpsOption)
-		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
-			azureutil.ResourceGroup(), scenario.tags, scenario.httpsOption, &networkRuleSet)
-	} else if scenario.httpOption {
-		stepTrace.WriteString(fmt.Sprintf(
-			"Creating Storage Account with HTTPS: %v;", scenario.httpsOption))
-		log.Printf("[DEBUG] Creating Storage Account with HTTPS: %v", scenario.httpsOption)
-		_, err = connection.CreateWithNetworkRuleSet(scenario.ctx, accountName,
-			azureutil.ResourceGroup(), scenario.tags, scenario.httpsOption, &networkRuleSet)
-	}
-	if err == nil {
-		// storage account created so add to state
-		stepTrace.WriteString(fmt.Sprintf(
-			"Created Storage Account: %s;", accountName))
-		log.Printf("[DEBUG] Created Storage Account: %s", accountName)
-		scenario.storageAccounts = append(scenario.storageAccounts, accountName)
+		DefaultAction: azureStorage.DefaultActionAllow,
 	}
 
-	if expectation == "Fail" {
+	stepTrace.WriteString(fmt.Sprintf(
+		"Attempt to create Storage Account with HTTPS: %v; ", httpsEnabled))
+	storageAccount, creationErr := azConnection.CreateStorageAccount(bucketName, resourceGroup, scenario.tags, httpsEnabled, &networkRuleSet)
+	if creationErr == nil {
+		scenario.storageAccounts = append(scenario.storageAccounts, bucketName) // Record for later cleanup
+	}
 
-		if err == nil {
-			err = fmt.Errorf("storage account was created, but should not have been: policy is not working or incorrectly configured")
-			return err
+	stepTrace.WriteString(fmt.Sprintf("Validate that storage account creation should %s; ", expectedResult))
+	switch shouldCreate {
+	case true:
+		if creationErr != nil {
+			err = utils.ReformatError("Creation of storage account did not succeed: %v", creationErr)
 		}
+	case false:
+		if creationErr == nil {
+			err = utils.ReformatError("Creation of storage account succeeded, but should have failed")
+		} else {
+			// Ensure failure is due to expected reason
 
-		detailedError := err.(autorest.DetailedError)
-		originalErr := detailedError.Original
-		detailed := originalErr.(*azure.ServiceError)
+			errorCode := ""
 
-		log.Printf("[DEBUG] Detailed Error: %v", detailed)
+			// Perform type assertion for creation error. Expected DetailedError.AzureServiceError
+			switch e := creationErr.(type) {
+			case autorest.DetailedError:
+				originalErr := e.Original
 
-		if strings.EqualFold(detailed.Code, "RequestDisallowedByPolicy") {
-			stepTrace.WriteString("Request was Disallowed By Policy;")
-			log.Printf("[DEBUG] Request was Disallowed By Policy: [Step PASSED]")
-			return nil
+				switch ee := originalErr.(type) {
+				case *azure.ServiceError: // This is the expected error type from azure sdk
+					errorCode = ee.Code
+				}
+
+			default:
+				// Error is generic, probably internal issue before invoking creation. Leaving this comment for clarity.
+			}
+
+			// Compare actual error with expected code
+			if !strings.EqualFold(errorCode, expectedErrorCode) {
+				err = fmt.Errorf("Creation of storage account failed with unexpected reason: %v - %v", errorCode, creationErr)
+			}
 		}
-
-		err = fmt.Errorf("storage account was not created but not due to policy non-compliance")
-		return err
-
-	} else if expectation == "Succeed" {
-		if err != nil {
-			log.Printf("[ERROR] Unexpected failure in create storage ac [Step FAILED]")
-			return err
-		}
-		return nil
 	}
 
-	err = fmt.Errorf("unsupported `result` option '%s' in the Gherkin feature - use either 'Fail' or 'Succeed'", expectation)
+	//Audit log
+	payload = struct {
+		StorageAccountName string
+		ResourceGroup      string
+		StorageAccount     azureStorage.Account
+		NetworkRuleSet     azureStorage.NetworkRuleSet
+		Tags               map[string]*string
+	}{
+		StorageAccountName: bucketName,
+		ResourceGroup:      resourceGroup,
+		StorageAccount:     storageAccount,
+		NetworkRuleSet:     networkRuleSet,
+	}
+
 	return err
 }
 
@@ -319,7 +294,7 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" should "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXShouldY)
+	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" should "([^"]*)" with error code "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXShouldYWithErrorCodeZ)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)
@@ -343,9 +318,11 @@ func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario
 
 func teardown() {
 
+	log.Printf("[DEBUG] Cleanup - removing storage accounts used during tests")
+
 	for _, account := range scenario.storageAccounts {
 		log.Printf("[DEBUG] need to delete the storageAccount: %s", account)
-		err := connection.DeleteAccount(scenario.ctx, azureutil.ResourceGroup(), account)
+		err := azConnection.DeleteStorageAccount(azureutil.ResourceGroup(), account)
 
 		if err != nil {
 			log.Printf("[ERROR] error deleting the storageAccount: %v", err)

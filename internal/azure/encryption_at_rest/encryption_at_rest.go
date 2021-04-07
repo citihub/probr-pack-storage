@@ -187,9 +187,11 @@ func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario
 
 func teardown() {
 
+	log.Printf("[DEBUG] Cleanup - removing storage accounts used during tests")
+
 	for _, account := range scenario.storageAccounts {
 		log.Printf("[DEBUG] need to delete the storageAccount: %s", account)
-		err := connection.DeleteAccount(scenario.ctx, azureutil.ResourceGroup(), account)
+		err := azConnection.DeleteStorageAccount(azureutil.ResourceGroup(), account)
 
 		if err != nil {
 			log.Printf("[ERROR] error deleting the storageAccount: %v", err)

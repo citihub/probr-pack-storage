@@ -7,12 +7,15 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-02-01/resources"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
+	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/citihub/probr-sdk/utils"
 )
 
 // AzureCredentials ...
 type AzureCredentials struct {
 	SubscriptionID, ClientID, TenantID, ClientSecret string
+	Authorizer                                       autorest.Authorizer
 }
 
 // AzureConnection simplifies the connection with cloud provider
@@ -20,8 +23,8 @@ type AzureConnection struct {
 	isCloudAvailable error
 	ctx              context.Context
 	credentials      AzureCredentials
-	ResourceGroup    *AzureResourceGroup
-	Storage          *AzureStorageAccount
+	ResourceGroup    *AzureResourceGroup  // Client obj to interact with Azure Resource Groups
+	StorageAccount   *AzureStorageAccount // Client obj to interact with Azure Storage Accounts
 }
 
 // Azure interface defining all azure methods
@@ -29,6 +32,7 @@ type Azure interface {
 	IsCloudAvailable() error
 	GetResourceGroupByName(name string) (resources.Group, error)
 	CreateStorageAccount(accountName, accountGroupName string, tags map[string]*string, httpsOnly bool, networkRuleSet *storage.NetworkRuleSet) (storage.Account, error)
+	DeleteStorageAccount(resourceGroupName, accountName string) error
 }
 
 var instance *AzureConnection
@@ -53,7 +57,15 @@ func NewAzureConnection(c context.Context, subscriptionID, tenantID, clientID, c
 			},
 		}
 
-		// TODO: Initiatlize Authorizer here since it is shared
+		// Create an authorization object via the connection config vars
+		clientCredentialsConfig := auth.NewClientCredentialsConfig(clientID, clientSecret, tenantID)
+		authorizer, authErr := clientCredentialsConfig.Authorizer()
+		if authErr == nil {
+			instance.credentials.Authorizer = authorizer
+		} else {
+			instance.isCloudAvailable = utils.ReformatError("Failed to initialize Azure Authorizer: %v", authErr)
+			return
+		}
 
 		// Create an azure resource group client object via the connection config vars
 		var grpErr error
@@ -65,13 +77,11 @@ func NewAzureConnection(c context.Context, subscriptionID, tenantID, clientID, c
 
 		// Create an azure resource group client object via the connection config vars
 		var saErr error
-		instance.Storage, grpErr = NewStorageAccount(c, instance.credentials)
+		instance.StorageAccount, grpErr = NewStorageAccount(c, instance.credentials)
 		if saErr != nil {
 			instance.isCloudAvailable = utils.ReformatError("Failed to initialize Azure Storage Account: %v", grpErr)
 			return
 		}
-
-		//TODO: Check availability and set isCloudAvailable var
 	})
 	return instance
 }
@@ -83,12 +93,18 @@ func (az *AzureConnection) IsCloudAvailable() error {
 
 // GetResourceGroupByName returns an existing Resource Group by name
 func (az *AzureConnection) GetResourceGroupByName(name string) (resources.Group, error) {
-	log.Printf("[DEBUG] getting a Resource Group '%s'", name)
+	log.Printf("[DEBUG] getting Resource Group '%s'", name)
 	return az.ResourceGroup.Get(name)
 }
 
 // CreateStorageAccount creates a storage account
 func (az *AzureConnection) CreateStorageAccount(accountName, accountGroupName string, tags map[string]*string, httpsOnly bool, networkRuleSet *storage.NetworkRuleSet) (storage.Account, error) {
-	log.Printf("[DEBUG] creating a Storage Account '%s'", accountName)
-	return az.Storage.Create(accountName, accountGroupName, tags, httpsOnly, networkRuleSet)
+	log.Printf("[DEBUG] creating Storage Account '%s'", accountName)
+	return az.StorageAccount.Create(accountName, accountGroupName, tags, httpsOnly, networkRuleSet)
+}
+
+// DeleteStorageAccount deletes a storage account
+func (az *AzureConnection) DeleteStorageAccount(resourceGroupName, accountName string) error {
+	log.Printf("[DEBUG] deleting Storage Account '%s'", accountName)
+	return az.StorageAccount.Delete(resourceGroupName, accountName)
 }

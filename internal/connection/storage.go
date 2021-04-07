@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/citihub/probr-pack-storage/internal/azure"
 	"github.com/citihub/probr-sdk/utils"
@@ -21,9 +20,15 @@ type AzureStorageAccount struct {
 // NewStorageAccount provides a new instance of AzureStorageAccount
 func NewStorageAccount(c context.Context, creds AzureCredentials) (sa *AzureStorageAccount, err error) {
 
-	// Guard clause
+	// Guard clause - context
 	if c == nil {
 		err = utils.ReformatError("Context instance cannot be nil")
+		return
+	}
+
+	// Guard clause - authorizer
+	if creds.Authorizer == nil {
+		err = utils.ReformatError("Authorizer instance cannot be nil")
 		return
 	}
 
@@ -48,13 +53,7 @@ func (sa *AzureStorageAccount) getStorageAccountClient(creds AzureCredentials) (
 	// Create an azure storage account client object via the connection config vars
 	saClient = storage.NewAccountsClient(creds.SubscriptionID)
 
-	// Create an authorization object via the connection config vars
-	authorizer := auth.NewClientCredentialsConfig(creds.ClientID, creds.ClientSecret, creds.TenantID)
-
-	authorizerToken, err := authorizer.Authorizer()
-	if err == nil {
-		saClient.Authorizer = authorizerToken
-	}
+	saClient.Authorizer = creds.Authorizer
 
 	return
 }
@@ -109,4 +108,14 @@ func (sa *AzureStorageAccount) Create(accountName, accountGroupName string, tags
 
 	return future.Result(sa.azStorageAccountClient)
 
+}
+
+// Delete deletes a storage account given the resource group and account name
+func (sa *AzureStorageAccount) Delete(resourceGroupName, accountName string) error {
+
+	log.Printf("[DEBUG] deleting Storage Account '%s' from Resource Group '%s'", accountName, resourceGroupName)
+
+	_, err := sa.azStorageAccountClient.Delete(sa.ctx, resourceGroupName, accountName)
+
+	return err
 }

@@ -13,13 +13,12 @@ Feature: Object Storage Encryption in Flight
 
     @s-azeif-001
     Scenario Outline: Prevent Creation of Object Storage Without Encryption in Flight
-      Then creation of an Object Storage bucket with https "<HTTPS Option>" should "<Result>"
+      Then creation of an Object Storage bucket with https "<HTTPS Option>" should "<Result>" with error code "<Error Code>"
 
       Examples:
-        | HTTPS Option | Result  | Error Description                                     |
-        | disabled     | fail    | Storage Buckets must not be accessible via plain HTTP |
-        | enabled      | fail    | Storage Buckets must not be accessible via plain HTTP |
-        | enabled      | succeed |                                                       |
+        | HTTPS Option  | Result   | Error Code                 |
+        | disabled      | fail     | RequestDisallowedByPolicy  |
+        | enabled       | succeed  |                            |
 
     # @s-azeif-001
     # Scenario Outline: Prevent Creation of Object Storage Without Encryption in Flight

@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-02-01/resources"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/citihub/probr-sdk/utils"
 )
 
@@ -19,9 +18,15 @@ type AzureResourceGroup struct {
 // NewResourceGroup provides a new instance of AzureResourceGroup
 func NewResourceGroup(c context.Context, creds AzureCredentials) (rg *AzureResourceGroup, err error) {
 
-	// Guard clause
+	// Guard clause - context
 	if c == nil {
 		err = utils.ReformatError("Context instance cannot be nil")
+		return
+	}
+
+	// Guard clause - authorizer
+	if creds.Authorizer == nil {
+		err = utils.ReformatError("Authorizer instance cannot be nil")
 		return
 	}
 
@@ -52,13 +57,7 @@ func (rg *AzureResourceGroup) getResourceGroupClient(creds AzureCredentials) (rg
 	// Create an azure resource group client object via the connection config vars
 	rgClient = resources.NewGroupsClient(creds.SubscriptionID)
 
-	// Create an authorization object via the connection config vars
-	authorizer := auth.NewClientCredentialsConfig(creds.ClientID, creds.ClientSecret, creds.TenantID)
-
-	authorizerToken, err := authorizer.Authorizer()
-	if err == nil {
-		rgClient.Authorizer = authorizerToken
-	}
+	rgClient.Authorizer = creds.Authorizer
 
 	return
 }
