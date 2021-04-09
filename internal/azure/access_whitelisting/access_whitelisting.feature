@@ -12,11 +12,11 @@ Feature: Object Storage Has Network Whitelisting Measures Enforced
       And azure resource group specified in config exists
 
     @s-azaw-002
-    Scenario Outline: Prevent Object Storage from Being Created Without Network Source Address Whitelisting
-      Then creation of a storage account with "<Whitelist Entry>" whitelisting entry "<Result>"
-
+    Scenario Outline: Prevent Object Storage from Being Created Without Allowed Network Source Address
+      Then creation of a storage account "<Result>" with allowed network address "<Allowed Network>"
+            
       Examples:
-        | Whitelist Entry | Result    |
+        | Allowed Network | Result    |
         | 219.79.19.0/24  | succeeds  |
         | 219.79.19.1     | fails     |
         | 219.108.32.1    | fails     |

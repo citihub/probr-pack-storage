@@ -98,7 +98,7 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 	return nil
 }
 
-func (scenario *scenarioState) creationOfAStorageAccountWithXWhitelistingEntryY(ipRange, expectedResult string) error {
+func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(expectedResult, ipRange string) error {
 
 	// Supported values for 'ipRange':
 	//	ip range in CIDR format, e.g: 219.79.19.0/24
@@ -257,7 +257,7 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of a storage account with "([^"]*)" whitelisting entry "([^"]*)"$`, scenario.creationOfAStorageAccountWithXWhitelistingEntryY)
+	ctx.Step(`^creation of a storage account "([^"]*)" with allowed network address "([^"]*)"$`, scenario.creationOfAStorageAccountXWithAllowedAddressY)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)
