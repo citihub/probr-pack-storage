@@ -1,4 +1,4 @@
-package azureaw
+package azureana
 
 import (
 	"context"
@@ -130,12 +130,12 @@ func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(exp
 	case "none":
 		ipRange = ""
 	}
-	// TODO: Validate input for whitelistEntry using some regex
+	// TODO: Validate input for allowed network using some regex
 
 	scenario.bucketName = utils.RandomString(10)
 	stepTrace.WriteString(fmt.Sprintf("Generate a storage account name using a random string: '%s'; ", scenario.bucketName))
 
-	stepTrace.WriteString(fmt.Sprintf("Attempt to create storage bucket with whitelisting for given IP Range: %s; ", ipRange))
+	stepTrace.WriteString(fmt.Sprintf("Attempt to create storage bucket with allowed network IP Range: %s; ", ipRange))
 	var networkRuleSet azureStorage.NetworkRuleSet
 	if ipRange == "" {
 		stepTrace.WriteString("IP Range is empty, using DefaultActionAllow for NetworkRuleSet; ")
@@ -217,7 +217,7 @@ func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario
 
 // Name returns this probe's name
 func (probe probeStruct) Name() string {
-	return "access_whitelisting"
+	return "allowed_network_access"
 }
 
 // Path returns this probe's feature file path

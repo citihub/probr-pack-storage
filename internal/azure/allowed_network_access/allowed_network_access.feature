@@ -1,9 +1,9 @@
-@s-azaw
-Feature: Object Storage Has Network Whitelisting Measures Enforced
+@s-azana
+Feature: Object Storage Has Allowed Network Access Measures Enforced
 
   As a Cloud Security Architect
   I want to ensure that suitable security controls are applied to Object Storage
-  So that my organisation's data can only be accessed from whitelisted IP addresses
+  So that my organisation's data can only be accessed from allowed network IP addresses
 
   #Rule: CHC2-SVD030 - protect cloud service network access by limiting access from the appropriate source network only
 
@@ -11,7 +11,7 @@ Feature: Object Storage Has Network Whitelisting Measures Enforced
       Given an Azure subscription is available
       And azure resource group specified in config exists
 
-    @s-azaw-002
+    @s-azana-001
     Scenario Outline: Prevent Object Storage from Being Created Without Allowed Network Source Address
       Then creation of a storage account "<Result>" with allowed network address "<Allowed Network>"
             
@@ -23,6 +23,7 @@ Feature: Object Storage Has Network Whitelisting Measures Enforced
         | 170.74.231.168  | succeeds  |
         | none            | fails     |
 
+    # TODO: Delete comments after requirements session
     # @s-azaw-001
     # Scenario: Check Object Storage is Configured With Network Source Address Whitelisting
     #   Given the CSP provides a whitelisting capability for Object Storage containers
