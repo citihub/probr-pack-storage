@@ -1,4 +1,4 @@
-package azureear
+package azureana
 
 import (
 	"context"
@@ -6,13 +6,26 @@ import (
 	"log"
 	"strings"
 
+	azureStorage "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
+	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/cucumber/godog"
+
 	azureutil "github.com/citihub/probr-pack-storage/internal/azure"
 	"github.com/citihub/probr-pack-storage/internal/connection"
 	"github.com/citihub/probr-sdk/audit"
 	"github.com/citihub/probr-sdk/probeengine"
+
 	"github.com/citihub/probr-sdk/utils"
-	"github.com/cucumber/godog"
 )
+
+const (
+	policyAssignmentName = "deny_storage_wo_net_acl"        // TODO: Should this be in config?
+	storageRgEnvVar      = "STORAGE_ACCOUNT_RESOURCE_GROUP" // TODO: Should this be replaced with azureutil.ResourceGroup() - which not only checks in env var, but also config vars?
+)
+
+// ProbeStruct allows this probe to be added to the ProbeStore
+type probeStruct struct {
+}
 
 type scenarioState struct {
 	name                      string
@@ -20,19 +33,16 @@ type scenarioState struct {
 	audit                     *audit.ScenarioAudit
 	probe                     *audit.Probe
 	ctx                       context.Context
-	tags                      map[string]*string
-	httpOption                bool
-	httpsOption               bool
 	policyAssignmentMgmtGroup string
+	tags                      map[string]*string
+	bucketName                string
+	storageAccount            azureStorage.Account
+	runningErr                error
 	storageAccounts           []string
 }
 
-// ProbeStruct meets the interface allowing this probe to be added to the ProbeStore
-type probeStruct struct {
-}
-
-// Probe meets the interface allowing this probe to be added to the ProbeStore
-var Probe probeStruct
+// Probe ...
+var Probe probeStruct             // Probe allows this probe to be added to the ProbeStore
 var scenario scenarioState        // Local container of scenario state
 var azConnection connection.Azure // Provides functionality to interact with Azure
 
@@ -88,15 +98,15 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 	return nil
 }
 
-func (scenario *scenarioState) creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY(encryptionOption string, expectedResult string) error {
+func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(expectedResult, ipRange string) error {
 
-	// Supported values for 'encryptionOption':
-	//	'enabled'
-	//  'disabled'
+	// Supported values for 'ipRange':
+	//	ip range in CIDR format, e.g: 219.79.19.0/24
+	//  "none" is an accepted value
 
 	// Supported values for 'expectedResult':
-	//	'succeed'
-	//	'fail'
+	//	'succeeds'
+	//	'fails'
 
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
@@ -104,11 +114,88 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithEncryptionAtRe
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	// TODO: How to set encryption at rest? Is this set by default? How to verify?
-	// Ref: https://docs.microsoft.com/en-us/azure/storage/common/storage-service-encryption
-	// As per MSFT: "Azure Storage encryption is enabled for all storage accounts... Azure Storage encryption cannot be disabled."
+	// Validate input values
+	var shouldCreate bool
+	switch expectedResult {
+	case "succeeds":
+		shouldCreate = true
+	case "fails":
+		shouldCreate = false
+	default:
+		err = utils.ReformatError("Unexpected value provided for expectedResult: '%s' Expected values: ['succeeds', 'fails']", expectedResult)
+		return err
+	}
 
-	err = godog.ErrPending
+	switch ipRange {
+	case "none":
+		ipRange = ""
+	}
+	// TODO: Validate input for allowed network using some regex
+
+	scenario.bucketName = utils.RandomString(10)
+	stepTrace.WriteString(fmt.Sprintf("Generate a storage account name using a random string: '%s'; ", scenario.bucketName))
+
+	stepTrace.WriteString(fmt.Sprintf("Attempt to create storage bucket with allowed network IP Range: %s; ", ipRange))
+	var networkRuleSet azureStorage.NetworkRuleSet
+	if ipRange == "" {
+		stepTrace.WriteString("IP Range is empty, using DefaultActionAllow for NetworkRuleSet; ")
+		networkRuleSet = azureStorage.NetworkRuleSet{
+			DefaultAction: azureStorage.DefaultActionAllow,
+		}
+	} else {
+		stepTrace.WriteString("Set IP Rule to allow given IP Range; ")
+		ipRule := azureStorage.IPRule{
+			Action:           azureStorage.Allow,
+			IPAddressOrRange: to.StringPtr(ipRange),
+		}
+
+		stepTrace.WriteString("Set Network Rule Set with IP Rule; ")
+		networkRuleSet = azureStorage.NetworkRuleSet{
+			IPRules:       &[]azureStorage.IPRule{ipRule},
+			DefaultAction: azureStorage.DefaultActionDeny,
+		}
+	}
+
+	storageAccount, creationErr := azConnection.CreateStorageAccount(scenario.bucketName, azureutil.ResourceGroup(), scenario.tags, true, &networkRuleSet)
+
+	scenario.storageAccount = storageAccount
+	if creationErr == nil {
+		scenario.storageAccounts = append(scenario.storageAccounts, scenario.bucketName) // Record for later cleanup
+	}
+
+	stepTrace.WriteString(fmt.Sprintf("Validate storage account creation %s; ", expectedResult))
+	switch shouldCreate {
+	case true:
+		if creationErr != nil {
+			err = utils.ReformatError("Creation of storage account did not succeed: %v", creationErr)
+		}
+	case false:
+		if creationErr == nil {
+			err = utils.ReformatError("Creation of storage account succeeded, but should have failed")
+		}
+		//TODO: Is this required? What is the appropriate error?
+		// } else {
+		// 	// stepTrace.WriteString(fmt.Sprintf("Check that storage account creation failed due to expected reason (403 Forbidden); "))
+		// 	// if !errors.IsStatusCode(403, creationErr) {
+		// 	// 	err = utils.ReformatError("Unexpected error during storage account creation : %v", creationErr)
+		// 	// }
+		// }
+	}
+
+	//Audit log
+	payload = struct {
+		StorageAccountName string
+		ResourceGroup      string
+		StorageAccount     azureStorage.Account
+		NetworkRuleSet     azureStorage.NetworkRuleSet
+		Tags               map[string]*string
+	}{
+		StorageAccountName: scenario.bucketName,
+		ResourceGroup:      azureutil.ResourceGroup(),
+		StorageAccount:     scenario.storageAccount,
+		NetworkRuleSet:     networkRuleSet,
+	}
+
 	return err
 }
 
@@ -121,12 +208,19 @@ func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
 	probeengine.LogScenarioStart(gs)
 }
 
-// Name returns this probe's name
-func (probe probeStruct) Name() string {
-	return "encryption_at_rest"
+func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario, err error) {
+
+	teardown()
+
+	probeengine.LogScenarioEnd(gs)
 }
 
-// Path returns the probe's feature file path
+// Name returns this probe's name
+func (probe probeStruct) Name() string {
+	return "allowed_network_access"
+}
+
+// Path returns this probe's feature file path
 func (probe probeStruct) Path() string {
 	return probeengine.GetFeaturePath("internal", "azure", probe.Name())
 }
@@ -163,7 +257,7 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of an Object Storage bucket with encryption at rest "([^"]*)" should "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY)
+	ctx.Step(`^creation of a storage account "([^"]*)" with allowed network address "([^"]*)"$`, scenario.creationOfAStorageAccountXWithAllowedAddressY)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)
@@ -176,13 +270,6 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.AfterStep(func(st *godog.Step, err error) {
 		scenario.currentStep = ""
 	})
-}
-
-func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario, err error) {
-
-	teardown()
-
-	probeengine.LogScenarioEnd(gs)
 }
 
 func teardown() {
