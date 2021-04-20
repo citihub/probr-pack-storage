@@ -9,7 +9,7 @@ This directory contains the feature file and code realted to the probing of encr
 - ***AZURE_CLIENT_ID*** - the user supplied azure client id (will n ormally be a service principal application id)
 - ***AZURE_CLIENT_SECRET*** - the secret required for client authentication
 - ***AZURE_RESOURCE_GROUP*** - the user supplied resource group for Probr purposes and must exist in the specified subscription
-- ***AZURE_LOCATION*** - the azure geo location where test storage account resources may be created
+- ***AZURE_RESOURCE_LOCATION*** - the azure geo location where test storage account resources may be created
 
 ## Azure Policy prerequiste
 
