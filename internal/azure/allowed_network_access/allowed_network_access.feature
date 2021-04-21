@@ -13,36 +13,7 @@ Feature: Object Storage Has Allowed Network Access Measures Enforced
 
     @s-azana-001
     Scenario Outline: Prevent Object Storage from Being Created Without Allowed Network Source Address
-      Then creation of a storage account "<Result>" with allowed network address "<Allowed Network>"
-            
-      Examples:
-        | Allowed Network | Result    |
-        | 219.79.19.0/24  | succeeds  |
-        | 219.79.19.1     | fails     |
-        | 219.108.32.1    | fails     |
-        | 170.74.231.168  | succeeds  |
-        | none            | fails     |
-
-    # TODO: Delete comments after requirements session
-    # @s-azaw-001
-    # Scenario: Check Object Storage is Configured With Network Source Address Whitelisting
-    #   Given the CSP provides a whitelisting capability for Object Storage containers
-    #   And a specified azure resource group exists
-    #   When we examine the Object Storage container in environment variable "TARGET_STORAGE_CONTAINER"
-    #   Then whitelisting is configured with the given IP address range or an endpoint
-
-    # @s-azaw-002
-    # Scenario Outline: Prevent Object Storage from Being Created Without Network Source Address Whitelisting
-    #   Given security controls that Prevent Object Storage from being created without network source address whitelisting are applied
-    #   And a specified azure resource group exists
-    #   When we provision an Object Storage container
-    #   And it is created with whitelisting entry "<Whitelist Entry>"
-    #   Then creation will "<Result>"
-
-    #   Examples:
-    #   | Whitelist Entry | Result  |
-    #   | 219.79.19.0/24  | Success |
-    #   | 219.79.19.1     | Fail    |
-    #   | 219.108.32.1    | Fail    |
-    #   | 170.74.231.168  | Success |
-    #   | nil             | Fail    |
+      Given a list of allowed and disallowed network segments is provided in config
+      When an attempt to create a storage account with a list of "allowed" network segments "succeeds"
+      Then an attempt to create a storage account with a list of "disallowed" network segments "fails"
+      #TODO: Implement new version

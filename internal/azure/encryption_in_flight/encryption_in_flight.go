@@ -92,55 +92,19 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 	return nil
 }
 
-func (scenario *scenarioState) httpAccessIs(arg1 string) error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	stepTrace.WriteString(fmt.Sprintf(
-		"Http Option: %s;", arg1))
-	if arg1 == "enabled" {
-		scenario.httpOption = true
-	} else {
-		scenario.httpOption = false
-	}
-	return nil
+func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXY(httpsOption, expectedResult string) error {
+	return scenario.creationOfAnObjectStorageBucketWithHTTPSXYWithErrorCodeZ(httpsOption, expectedResult, "")
 }
 
-func (scenario *scenarioState) httpsAccessIs(arg1 string) error {
-
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-	}{}
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	stepTrace.WriteString(fmt.Sprintf(
-		"Https Option: %s;", arg1))
-	if arg1 == "enabled" {
-		scenario.httpsOption = true
-	} else {
-		scenario.httpsOption = false
-	}
-	return nil
-}
-
-func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldYWithErrorCodeZ(httpsOption, expectedResult, expectedErrorCode string) error {
+func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXYWithErrorCodeZ(httpsOption, expectedResult, expectedErrorCode string) error {
 
 	// Supported values for 'httpsOption':
 	//	'enabled'
 	//  'disabled'
 
 	// Supported values for 'expectedResult':
-	//	'succeed'
-	//	'fail'
+	//	'succeeds'
+	//	'fails'
 
 	// Supported values for 'expectedErrorCode':
 	//	free text
@@ -166,9 +130,9 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldYW
 	// Validate input values - expectedResult
 	var shouldCreate bool
 	switch expectedResult {
-	case "succeed":
+	case "succeeds":
 		shouldCreate = true
-	case "fail":
+	case "fails":
 		shouldCreate = false
 	default:
 		err = utils.ReformatError("Unexpected value provided for expectedResult: '%s' Expected values: ['succeeds', 'fails']", expectedResult)
@@ -191,7 +155,7 @@ func (scenario *scenarioState) creationOfAnObjectStorageBucketWithHTTPSXShouldYW
 		scenario.storageAccounts = append(scenario.storageAccounts, bucketName) // Record for later cleanup
 	}
 
-	stepTrace.WriteString(fmt.Sprintf("Validate that storage account creation should %s; ", expectedResult))
+	stepTrace.WriteString(fmt.Sprintf("Validate that storage account creation %s; ", expectedResult))
 	switch shouldCreate {
 	case true:
 		if creationErr != nil {
@@ -294,7 +258,8 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" should "([^"]*)" with error code "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXShouldYWithErrorCodeZ)
+	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXY)
+	ctx.Step(`^creation of an Object Storage bucket with https "([^"]*)" "([^"]*)" with error code "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithHTTPSXYWithErrorCodeZ)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)

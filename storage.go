@@ -2,7 +2,6 @@ package pack
 
 import (
 	azureana "github.com/citihub/probr-pack-storage/internal/azure/allowed_network_access"
-	azureear "github.com/citihub/probr-pack-storage/internal/azure/encryption_at_rest"
 	azureeif "github.com/citihub/probr-pack-storage/internal/azure/encryption_in_flight"
 	"github.com/citihub/probr-sdk/config"
 	"github.com/citihub/probr-sdk/probeengine"
@@ -17,8 +16,9 @@ func GetProbes() []probeengine.Probe {
 	switch config.Vars.ServicePacks.Storage.Provider {
 	case "Azure":
 		return []probeengine.Probe{
+			//azureac.Probe,
 			azureana.Probe,
-			azureear.Probe,
+			//azureear.Probe,
 			azureeif.Probe,
 		}
 	default:
@@ -29,7 +29,8 @@ func GetProbes() []probeengine.Probe {
 func init() {
 	// This line will ensure that all static files are bundled into pked.go file when using pkger cli tool
 	// See: https://github.com/markbates/pkger
+	pkger.Include("/internal/azure/access_control/access_control.feature")
 	pkger.Include("/internal/azure/allowed_network_access/allowed_network_access.feature")
-	pkger.Include("/internal/azure/encryption_at_rest/encryption_at_rest.feature")
+	//pkger.Include("/internal/azure/encryption_at_rest/encryption_at_rest.feature")
 	pkger.Include("/internal/azure/encryption_in_flight/encryption_in_flight.feature")
 }

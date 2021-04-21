@@ -88,30 +88,6 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 	return nil
 }
 
-func (scenario *scenarioState) creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY(encryptionOption string, expectedResult string) error {
-
-	// Supported values for 'encryptionOption':
-	//	'enabled'
-	//  'disabled'
-
-	// Supported values for 'expectedResult':
-	//	'succeed'
-	//	'fail'
-
-	// Standard auditing logic to ensures panics are also audited
-	stepTrace, payload, err := utils.AuditPlaceholders()
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	// TODO: How to set encryption at rest? Is this set by default? How to verify?
-	// Ref: https://docs.microsoft.com/en-us/azure/storage/common/storage-service-encryption
-	// As per MSFT: "Azure Storage encryption is enabled for all storage accounts... Azure Storage encryption cannot be disabled."
-
-	err = godog.ErrPending
-	return err
-}
-
 func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
 	s.name = gs.Name
 	s.probe = audit.State.GetProbeLog(probeName)
@@ -163,7 +139,7 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of an Object Storage bucket with encryption at rest "([^"]*)" should "([^"]*)"$`, scenario.creationOfAnObjectStorageBucketWithEncryptionAtRestXShouldY)
+	// TBD
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)
