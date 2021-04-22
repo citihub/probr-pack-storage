@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 
 	azureStorage "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -46,6 +45,10 @@ func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 	stepTrace.WriteString(fmt.Sprintf("Validate that Azure subscription specified in config file is available; "))
@@ -64,16 +67,13 @@ func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
 
 func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error {
 
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-		SubscriptionID string
-		ResourceGroup  string
-	}{
-		SubscriptionID: azureutil.SubscriptionID(),
-		ResourceGroup:  azureutil.ResourceGroup(),
-	}
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
@@ -90,6 +90,15 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 		return err
 	}
 
+	//Audit log
+	payload = struct {
+		SubscriptionID string
+		ResourceGroup  string
+	}{
+		SubscriptionID: azureutil.SubscriptionID(),
+		ResourceGroup:  azureutil.ResourceGroup(),
+	}
+
 	return nil
 }
 
@@ -98,6 +107,10 @@ func (scenario *scenarioState) aListWithAllowedAndDisallowedNetworkSegmentsIsPro
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
@@ -134,9 +147,9 @@ func (scenario *scenarioState) anAttemptToCreateAStorageAccountWithAListOfXNetwo
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
 		// Catching any errors from panic
-		// if panicErr := recover(); panicErr != nil {
-		// 	err = utils.ReformatError("Unexpected error occured: ", panicErr)
-		// }
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
