@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
+	"net"
 
 	azureStorage "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -18,27 +18,21 @@ import (
 	"github.com/citihub/probr-sdk/utils"
 )
 
-const (
-	policyAssignmentName = "deny_storage_wo_net_acl"        // TODO: Should this be in config?
-	storageRgEnvVar      = "STORAGE_ACCOUNT_RESOURCE_GROUP" // TODO: Should this be replaced with azureutil.ResourceGroup() - which not only checks in env var, but also config vars?
-)
-
 // ProbeStruct allows this probe to be added to the ProbeStore
 type probeStruct struct {
 }
 
 type scenarioState struct {
-	name                      string
-	currentStep               string
-	audit                     *audit.ScenarioAudit
-	probe                     *audit.Probe
-	ctx                       context.Context
-	policyAssignmentMgmtGroup string
-	tags                      map[string]*string
-	bucketName                string
-	storageAccount            azureStorage.Account
-	runningErr                error
-	storageAccounts           []string
+	name            string
+	currentStep     string
+	audit           *audit.ScenarioAudit
+	probe           *audit.Probe
+	ctx             context.Context
+	tags            map[string]*string
+	bucketName      string
+	storageAccount  azureStorage.Account
+	storageAccounts []string
+	networkSegments NetworkSegments
 }
 
 // Probe ...
@@ -51,6 +45,10 @@ func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 	stepTrace.WriteString(fmt.Sprintf("Validate that Azure subscription specified in config file is available; "))
@@ -69,16 +67,13 @@ func (scenario *scenarioState) anAzureSubscriptionIsAvailable() error {
 
 func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error {
 
-	var err error
-	var stepTrace strings.Builder
-	payload := struct {
-		SubscriptionID string
-		ResourceGroup  string
-	}{
-		SubscriptionID: azureutil.SubscriptionID(),
-		ResourceGroup:  azureutil.ResourceGroup(),
-	}
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
@@ -95,14 +90,54 @@ func (scenario *scenarioState) azureResourceGroupSpecifiedInConfigExists() error
 		return err
 	}
 
+	//Audit log
+	payload = struct {
+		SubscriptionID string
+		ResourceGroup  string
+	}{
+		SubscriptionID: azureutil.SubscriptionID(),
+		ResourceGroup:  azureutil.ResourceGroup(),
+	}
+
 	return nil
 }
 
-func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(expectedResult, ipRange string) error {
+func (scenario *scenarioState) aListWithAllowedAndDisallowedNetworkSegmentsIsProvidedInConfig() error {
 
-	// Supported values for 'ipRange':
-	//	ip range in CIDR format, e.g: 219.79.19.0/24
-	//  "none" is an accepted value
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
+	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
+	}()
+
+	stepTrace.WriteString("Validate that allowed and disallowed network segments are provided in config; ")
+
+	scenario.networkSegments = getNetworkSegments()
+
+	if !(len(scenario.networkSegments.Allowed) > 0) || !(len(scenario.networkSegments.Disallowed) > 0) {
+		err = utils.ReformatError("The list of allowed and disallowed network segments has not been defined in config")
+	}
+
+	//Audit log
+	payload = struct {
+		//NetworkSegments config.NetworkSegments
+		NetworkSegments NetworkSegments
+	}{
+		NetworkSegments: scenario.networkSegments,
+	}
+
+	return err
+}
+
+func (scenario *scenarioState) anAttemptToCreateAStorageAccountWithAListOfXNetworkSegmentsY(access, expectedResult string) error {
+
+	// Supported values for 'access':
+	//	'allowed'
+	//  'disallowed'
 
 	// Supported values for 'expectedResult':
 	//	'succeeds'
@@ -111,6 +146,10 @@ func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(exp
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
+		// Catching any errors from panic
+		if panicErr := recover(); panicErr != nil {
+			err = utils.ReformatError("Unexpected error occured: ", panicErr)
+		}
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
@@ -126,36 +165,53 @@ func (scenario *scenarioState) creationOfAStorageAccountXWithAllowedAddressY(exp
 		return err
 	}
 
-	switch ipRange {
-	case "none":
-		ipRange = ""
+	var ipRangeList []string
+	switch access {
+	case "allowed":
+		ipRangeList = scenario.networkSegments.Allowed
+	case "disallowed":
+		ipRangeList = scenario.networkSegments.Disallowed
+	default:
+		err = utils.ReformatError("Unexpected value provided for access: '%s' Expected values: ['allowed', 'disallowed']", access)
+		return err
 	}
-	// TODO: Validate input for allowed network using some regex
 
 	scenario.bucketName = utils.RandomString(10)
 	stepTrace.WriteString(fmt.Sprintf("Generate a storage account name using a random string: '%s'; ", scenario.bucketName))
 
-	stepTrace.WriteString(fmt.Sprintf("Attempt to create storage bucket with allowed network IP Range: %s; ", ipRange))
-	var networkRuleSet azureStorage.NetworkRuleSet
-	if ipRange == "" {
-		stepTrace.WriteString("IP Range is empty, using DefaultActionAllow for NetworkRuleSet; ")
-		networkRuleSet = azureStorage.NetworkRuleSet{
-			DefaultAction: azureStorage.DefaultActionAllow,
+	stepTrace.WriteString(fmt.Sprintf("Set IP Rules to allow given IP Ranges %v; ", ipRangeList))
+	var ipRules []azureStorage.IPRule
+	for _, ipRange := range ipRangeList {
+
+		// Validate input for ip range.
+		// Acceptable values are single IP or IP Range in CIDR format.
+		// Warning: this validation will pass IPv6, however only IPv4 address is allowed at the time this was written.
+		// See azureStorage.IPRule.IPAddressOrRange property description.
+		ipAddr := net.ParseIP(ipRange)
+		if ipAddr == nil {
+			_, _, ipErr := net.ParseCIDR(ipRange)
+			if ipErr != nil {
+				err = utils.ReformatError("Invalid IP Range '%s'. Acceptable values are single IP or IP Range in CIDR format.", ipRange)
+				return err
+			}
 		}
-	} else {
-		stepTrace.WriteString("Set IP Rule to allow given IP Range; ")
+
 		ipRule := azureStorage.IPRule{
 			Action:           azureStorage.Allow,
 			IPAddressOrRange: to.StringPtr(ipRange),
 		}
 
-		stepTrace.WriteString("Set Network Rule Set with IP Rule; ")
-		networkRuleSet = azureStorage.NetworkRuleSet{
-			IPRules:       &[]azureStorage.IPRule{ipRule},
-			DefaultAction: azureStorage.DefaultActionDeny,
-		}
+		ipRules = append(ipRules, ipRule)
 	}
 
+	stepTrace.WriteString("Set Network Rule Set with IP Rules; ")
+	var networkRuleSet azureStorage.NetworkRuleSet
+	networkRuleSet = azureStorage.NetworkRuleSet{
+		DefaultAction: azureStorage.DefaultActionDeny,
+		IPRules:       &ipRules,
+	}
+
+	stepTrace.WriteString(fmt.Sprintf("Attempt to create storage bucket with allowed network IP Ranges: %v; ", ipRangeList))
 	storageAccount, creationErr := azConnection.CreateStorageAccount(scenario.bucketName, azureutil.ResourceGroup(), scenario.tags, true, &networkRuleSet)
 
 	scenario.storageAccount = storageAccount
@@ -257,7 +313,8 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.Step(`^azure resource group specified in config exists$`, scenario.azureResourceGroupSpecifiedInConfigExists)
 
 	// Steps
-	ctx.Step(`^creation of a storage account "([^"]*)" with allowed network address "([^"]*)"$`, scenario.creationOfAStorageAccountXWithAllowedAddressY)
+	ctx.Step(`^a list with allowed and disallowed network segments is provided in config$`, scenario.aListWithAllowedAndDisallowedNetworkSegmentsIsProvidedInConfig)
+	ctx.Step(`^an attempt to create a storage account with a list of "([^"]*)" network segments "([^"]*)"$`, scenario.anAttemptToCreateAStorageAccountWithAListOfXNetworkSegmentsY)
 
 	ctx.AfterScenario(func(s *godog.Scenario, err error) {
 		afterScenario(scenario, probe, s, err)
@@ -286,4 +343,27 @@ func teardown() {
 	}
 
 	log.Println("[DEBUG] Teardown completed")
+}
+
+// NetworkSegments represents the required config settings fr this probe. This shall be removed and replaced with actual config vars once sdk refactor is complete.
+type NetworkSegments struct {
+	Allowed    []string `yaml:"Allowed"`    // A list of allowed network segments to be used when creating storage accounts
+	Disallowed []string `yaml:"Disallowed"` // A list of disallowed network segments to be used when creating storage accounts
+}
+
+func getNetworkSegments() NetworkSegments {
+
+	//return config.Vars.ServicePacks.Storage.NetworkSegments
+
+	// TODO: This is here until config refactoring in SDK is finished
+	return NetworkSegments{
+		Allowed: []string{
+			"219.79.19.0/24",
+			"170.74.231.168",
+		},
+		Disallowed: []string{
+			"219.79.19.1",
+			"219.108.32.1",
+		},
+	}
 }
