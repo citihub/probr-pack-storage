@@ -332,6 +332,7 @@ func teardown() {
 	log.Println("[DEBUG] Teardown completed")
 }
 
+// NetworkSegments represents the required config settings fr this probe. This shall be removed and replaced with actual config vars once sdk refactor is complete.
 type NetworkSegments struct {
 	Allowed    []string `yaml:"Allowed"`    // A list of allowed network segments to be used when creating storage accounts
 	Disallowed []string `yaml:"Disallowed"` // A list of disallowed network segments to be used when creating storage accounts
