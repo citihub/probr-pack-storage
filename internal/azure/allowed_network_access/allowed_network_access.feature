@@ -12,8 +12,7 @@ Feature: Object Storage Has Allowed Network Access Measures Enforced
       And azure resource group specified in config exists
 
     @s-azana-001
-    Scenario Outline: Prevent Object Storage from Being Created Without Allowed Network Source Address
-      Given a list of allowed and disallowed network segments is provided in config
+    Scenario: Prevent Object Storage from Being Created Without Allowed Network Source Address
+      Given a list with allowed and disallowed network segments is provided in config
       When an attempt to create a storage account with a list of "allowed" network segments "succeeds"
       Then an attempt to create a storage account with a list of "disallowed" network segments "fails"
-      #TODO: Implement new version
